@@ -1,0 +1,17 @@
+knitr
+leaflet
+readxl
+sf
+RColorBrewer
+dplyr
+htmltools
+tidyverse
+ggplot2
+tibble
+tidyr
+readr
+purrr
+stringr
+forcats
+lubridate
+ggnewscale
