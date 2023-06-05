@@ -8,7 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 library(knitr)
 
-## Global options
+## global options
 options(max.print="75")
 opts_chunk$set(cache=TRUE,
                prompt=FALSE,
@@ -19,20 +19,17 @@ opts_chunk$set(cache=TRUE,
 opts_knit$set(width=75)
 ```
 
-
-
-MAYBE ALREADY DESCRIBE THE MAPS HERE
-
 ```{r remove, include=FALSE}
 rm(list=ls())
 ```
 
-## Preparing data
+## Preparing Data
 In order to visualise the data in a meaningful way I first need to prepare it. First step is reading in the necessary libraries and then read in the data and inspect it.
 
 ```{r libraries}
+# loading libraries
+library(googlesheets4)
 library(leaflet)
-library(readxl)
 library(sf)
 library(RColorBrewer)
 library(dplyr)
@@ -43,9 +40,15 @@ library(ggnewscale)
 ```
 
 ```{r read data}
+# getting authentication
+gs4_deauth()
 # reading file containing articles' information including country
-articles <- read_excel("data/articles.xlsx")
+articles <- read_sheet("https://docs.google.com/spreadsheets/d/1NFlbYvgNJCsr0uW5uyhvtZPhoj4UlpB0D9DB7rlhu6g/edit?usp=sharing", range = "Ark1")
 articles
+
+# reading file containing articles' information including country (offline access)
+# library(readxl)
+# articles <- read_excel("data/articles.xlsx")
 
 # reading GeoJSON file containing country boundaries
 countries <- st_read("data/countries.geojson")
@@ -66,12 +69,12 @@ articles <- unnest(articles, Country)
 
 # merging articles and countries based on country column
 merged_data <- merge(articles, countries, by.x = "Country", by.y = "ADMIN", all.x = TRUE)
-merged_data
+head(merged_data, n=3)
 ```
 
-When inspecting the `merged_data` data frame is appears as if all the columns from the two data files have merged successfully. This data frame only contains the countries and ISO codes of the countries which appears in the `articles` file.
+When inspecting the `merged_data` data frame it appears as if all the columns from the two data files have merged successfully. This data frame only contains the countries and ISO codes of the countries which appears in the `articles` file.
 
-To get a quick impression of the distribution of articles across countries I wish to add a count bar for the top five countries appearing in the `articles` data. To do this I first create a separate table for the `Country` column in the `merged_data` data frame. I then convert this to a data frame of its own, so that I am able to use these counts for later use in the maps. Lastly, I arrange the `counts_df` in descending order according to the `Count` column and then assign the top five countries to its own object. 
+To get a quick impression of the distribution of articles across countries I wish to add a count bar for the top five countries appearing in the `articles` data. To do this I first create a separate table for the `Country` column in the `merged_data` data frame. I then convert this to a data frame of its own, so that I am able to use these counts for later use in the maps. Lastly, I arrange the `counts_df` in descending order according to the `Count` column and then assign the top five countries to its own object. This object is presented as a bar chart for a quick view of which countries has the highest count.
 
 ```{r frequency count}
 # calculating frequency count of each country
@@ -90,10 +93,10 @@ top_countries <- counts_df %>%
   arrange(desc(Count)) %>%
   head(5)
 
-# Convert the 'Country' column to factor with ordered levels based on 'Count'
+# converting 'Country' column to factor with ordered levels based on 'Count'
 top_countries$Country <- factor(top_countries$Country, levels = top_countries$Country[order(top_countries$Count)])
 
-# Plotting bar chart of top five countries count
+# plotting bar chart of top five countries count
 ggplot(top_countries, aes(x = Country, y = Count)) +
   geom_bar(stat = "identity", fill = "darkgreen") +
   labs(title = "Top Five Countries Count", x = "Country", y = "Count") +
@@ -102,50 +105,39 @@ ggplot(top_countries, aes(x = Country, y = Count)) +
   scale_y_continuous(breaks = seq(0, max(top_countries$Count), by = 2), labels = function(x) as.character(as.integer(x)))
 ```
 
-```{r word cloud}
-library(wordcloud)
-library(extrafont)
+## Choropleth Map 1
 
-# Set seed for reproducibility
-set.seed(123)
+```{r choropleth prep 1}
+# defining color palette
+color_palette <- brewer.pal(9, "Greens")[-(1:3)]  # excluding first four colors
 
-# Create a character vector of keywords
-keywords <- articles$Keywords
-
-# Concatenate all the keywords into a single string
-keywords_string <- paste(keywords, collapse = ";")
-
-# Split the keywords string at semicolons
-keywords_split <- strsplit(keywords_string, ";", fixed = TRUE)[[1]]
-
-# Remove any leading/trailing whitespaces and convert to lowercase
-keywords_split <- tolower(trimws(keywords_split))
-
-# Generate word frequencies
-keyword_freq <- table(keywords_split)
-
-# Remove common words
-stopwords <- c("the", "and", "of", "in", "to", "for")
-keyword_freq <- keyword_freq[!(names(keyword_freq) %in% stopwords)]
-
-# Define color palette
-color_palette <- brewer.pal(length(keyword_freq), "Greens")[-(1:3)]  # Exclude first four colors
-
-# Create a word cloud with colors and nicer shape
-wordcloud(names(keyword_freq), freq = keyword_freq,
-          random.order = FALSE, colors = color_palette,
-          scale = c(5, 1.2), rot.per = 0.3,
-          family = "serif", font = 3)
+# creating leaflet map
+choropleth_map1 <- leaflet(data = merged_geojson) %>%
+  setView(lng = 0, lat = 0, zoom = 2) %>%
+  addProviderTiles("OpenStreetMap.Mapnik") %>%
+  addPolygons(fillColor = ~colorNumeric(color_palette, domain = Count)(Count),
+              weight = 1,
+              opacity = 1,
+              color = "white",
+              fillOpacity = 0.7,
+              highlight = highlightOptions(
+                weight = 2,
+                color = "white",
+                fillOpacity = 0.9
+              ),
+              label = ~paste(ADMIN, ": ", Count))
 ```
 
+```{r choropleth map 1}
+# displaying first choropleth map
+choropleth_map1
+```
 
+## Choropleth Map 2
 
-## Choropleth map
-
-
-```{r choropleth prep}
-# create leaflet map
-choropleth_map <- leaflet(data = merged_geojson) %>%
+```{r choropleth prep 2}
+# creating leaflet map
+choropleth_map2 <- leaflet(data = merged_geojson) %>%
   setView(lng = 0, lat = 0, zoom = 2) %>%
   addProviderTiles("OpenStreetMap.Mapnik") %>%
   addPolygons(fillColor = ~colorNumeric(color_palette, domain = Count)(Count),
@@ -160,49 +152,52 @@ choropleth_map <- leaflet(data = merged_geojson) %>%
               ),
               label = ~paste(ADMIN, ": ", Count)) %>%
   addLegend("bottomright", pal = colorNumeric(color_palette, domain = unique(counts_df$Count)), values = unique(counts_df$Count), title = "Count") %>%
+  addControl(html = as.character(tags$div(style = "text-align: center; background-color: white; padding: 10px; font-family: Arial, sans-serif; font-size: 16px; font-weight: bold;", 
+                                          HTML(paste0("World map of studies in Smart Farming<br>",
+                                                      "<span style='font-size: 12px;'>Hover mouse over country to view its count</span>")))),
+              position = "topright") %>%
   addControl(html = as.character(tags$div(HTML(paste0("<h4>Top 5 Countries</h4>",
-                                                      "<table>",                                                      "<thead><tr><th>Country</th><th>Count</th></tr></thead>",
+                                                      "<table>",
+                                                      "<thead><tr><th>Country</th><th>Count</th></tr></thead>",
                                                       "<tbody>",
                                                       paste0("<tr><td>", top_countries$Country, "</td><td>", top_countries$Count, "</td></tr>", collapse = "\n"),
                                                       "</tbody>",
                                                       "</table>")))),
-              position = "bottomleft") %>%
-  addControl(html = as.character(tags$div(id = "map-title", style = "background-color: white; padding: 10px; font-family: Arial, sans-serif; font-size: 16px; font-weight: bold;", "World map of studies in Smart Farming")),
-              position = "topright")
+              position = "bottomleft")
 ```
 
-```{r choropleth map}
-# displaying choropleth map
-choropleth_map
+```{r choropleth map 2}
+# displaying second choropleth map
+choropleth_map2
 ```
 
-## Centroid map
+## Centroid Map
 
-```{r prep centroid}
-# Repair invalid geometries
+```{r centroid data}
+# repairing invalid geometries
 merged_geojson <- st_make_valid(merged_geojson)
 
-# Simplify country geometries
+# simplifying country geometries
 simplified_geojson <- st_simplify(merged_geojson, preserveTopology = TRUE, dTolerance = 0.01)
 
-# Create centroids for each country
+# creating centroids for each country
 centroids <- st_centroid(simplified_geojson)
 
-# Extract coordinates from centroids
+# extracting coordinates from centroids
 centroids <- st_coordinates(centroids)
 
-# Convert to data frame
+# converting to data frame
 centroids_df <- as.data.frame(centroids)
 
-# Rename the columns
+# renaming the columns
 colnames(centroids_df) <- c("x", "y")
 
-# Combine with the count data
+# combining with the count data
 centroids_df <- cbind(centroids_df, Count = simplified_geojson$Count)
 ```
 
-```{r centroid prep}
-# Create the centroid map
+```{r centroid map prep}
+# creating centroid map
 centroid_map <- ggplot() +
   geom_sf(data = countries, fill = "grey", alpha = 0.3) +
   new_scale("size") +
@@ -218,6 +213,6 @@ centroid_map <- ggplot() +
 ```
 
 ```{r centroid map}
+# displaying centroid map
 centroid_map
 ```
-
